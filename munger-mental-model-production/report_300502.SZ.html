@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>芒格心智模型分析 - 300502.SZ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 40px;
+        }
+        .verdict-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        .verdict-box.fail {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        .verdict-box h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        .verdict-box.fail h3 {
+            color: #721c24;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 25px;
+            border: 1px solid #dee2e6;
+        }
+        .card h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .dimension-item {
+            margin-bottom: 15px;
+        }
+        .dimension-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .dimension-label span:first-child {
+            font-weight: 600;
+            color: #333;
+        }
+        .dimension-label span:last-child {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 30px;
+        }
+        .details {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            margin-top: 20px;
+        }
+        .details h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .details p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        .flag {
+            display: inline-block;
+            background: #e7d4f5;
+            color: #5a3d7a;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin: 4px 4px 4px 0;
+        }
+        .flag.veto {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #6c757d;
+            border-top: 1px solid #dee2e6;
+        }
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .score-item:last-child {
+            border-bottom: none;
+        }
+        .score-label {
+            color: #333;
+            font-weight: 500;
+        }
+        .score-value {
+            font-weight: bold;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>芒格心智模型分析报告</h1>
+            <p>Munger Mental Model Analysis Report</p>
+        </div>
+
+        <div class="content">
+            <!-- Verdict Box -->
+            <div class="verdict-box fail">
+                <h3>分析结论</h3>
+                <p><strong>一票否决结果：不通过 (VETO)</strong></p>
+                <p>信心等级：低</p>
+                <p>分析标的：300502.SZ | 分析日期：2026-07-10 | 数据版本：real-v1</p>
+                <p><strong>否决原因：</strong>审计师变更（agency_switch）</p>
+            </div>
+
+            <!-- Key Metrics -->
+            <div class="grid">
+                <div class="card">
+                    <h3>五维度评分（修正版）</h3>
+                    <div class="dimension-item">
+                        <div class="dimension-label">
+                            <span>财务维度 (Financial)</span>
+                            <span>100.00</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    <div class="dimension-item">
+                        <div class="dimension-label">
+                            <span>竞争力维度 (Competition)</span>
+                            <span>74.22</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 74.22%"></div>
+                        </div>
+                    </div>
+                    <div class="dimension-item">
+                        <div class="dimension-label">
+                            <span>激励机制维度 (Incentive)</span>
+                            <span>0.00</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="dimension-item">
+                        <div class="dimension-label">
+                            <span>心理学维度 (Psychology)</span>
+                            <span>100.00</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    <div class="dimension-item">
+                        <div class="dimension-label">
+                            <span>负面因素维度 (Negative)</span>
+                            <span>0.00</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>关键统计数据</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-label">ROE (同行)</div>
+                            <div class="stat-value">72.62%</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">毛利率</div>
+                            <div class="stat-value">47.81%</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">经营现金流</div>
+                            <div class="stat-value">77.01亿</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">参与机构数</div>
+                            <div class="stat-value">346个</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Radar Chart -->
+            <div class="card">
+                <h3>五维度雷达图</h3>
+                <div class="chart-container">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Detailed Analysis -->
+            <div class="grid">
+                <div class="card">
+                    <h3>一票否决项 (Veto Flags)</h3>
+                    <div class="details">
+                        <h4>触发的否决条件：</h4>
+                        <div>
+                            <span class="flag veto">agency_switch</span>
+                        </div>
+                        <p style="margin-top: 15px;"><strong>说明：</strong>近3年内出现审计师变更。虽然为知名大所正常轮换（从信永中和→天健会计师事务所），但系统仍按规则触发一票否决。</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>数据质量标记 (Data Flags)</h3>
+                    <div class="details">
+                        <ul style="list-style: none; color: #666;">
+                            <li>✓ 财务数据：完整</li>
+                            <li>✓ 毛利率：完整</li>
+                            <li>✓ 经营现金流：完整</li>
+                            <li>✗ related_party: 数据不可用</li>
+                            <li>✗ qa_sentiment: 数据不可用</li>
+                        </ul>
+                        <p style="margin-top: 15px;"><strong>说明：</strong>核心财务数据已补全。仅关联方交易和分析师情绪数据不可用，不影响主要评分。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-scores Breakdown -->
+            <div class="card">
+                <h3>各维度细项评分（修正版）</h3>
+
+                <h4 style="margin-top: 20px; margin-bottom: 10px; color: #667eea;">财务维度 (Financial) - 100.00 ✓</h4>
+                <div class="score-item">
+                    <span class="score-label">ROE vs 中位数</span>
+                    <span class="score-value">1.00/1.00 ✓</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">毛利率 vs 中位数</span>
+                    <span class="score-value">1.00/1.00 ✓</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">经营现金流检查</span>
+                    <span class="score-value">1.00/1.00 ✓</span>
+                </div>
+
+                <h4 style="margin-top: 20px; margin-bottom: 10px; color: #667eea;">竞争力维度 (Competition) - 74.22 ✓</h4>
+                <div class="score-item">
+                    <span class="score-label">ROE 百分位</span>
+                    <span class="score-value">100.00%（行业最高）</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">毛利率 百分位</span>
+                    <span class="score-value">85.54%（行业前15%）</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">集中度加分</span>
+                    <span class="score-value">0.00</span>
+                </div>
+
+                <h4 style="margin-top: 20px; margin-bottom: 10px; color: #dc3545;">激励机制维度 (Incentive) - 0.00 ✗</h4>
+                <div class="score-item">
+                    <span class="score-label">股权集中度</span>
+                    <span class="score-value">100% (严重超标)</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">股权质押处罚</span>
+                    <span class="score-value">0.00 (无质押)</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">管理层增减持</span>
+                    <span class="score-value">0.00 (无数据)</span>
+                </div>
+
+                <h4 style="margin-top: 20px; margin-bottom: 10px; color: #667eea;">心理学维度 (Psychology) - 100.00 ✓</h4>
+                <div class="score-item">
+                    <span class="score-label">调研会议次数</span>
+                    <span class="score-value">373次</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">参与机构数</span>
+                    <span class="score-value">346个</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">综合心理学得分</span>
+                    <span class="score-value">100.00</span>
+                </div>
+            </div>
+
+            <!-- Analysis Summary -->
+            <div class="card" style="margin-top: 30px;">
+                <h3>深层分析</h3>
+                <div class="details">
+                    <h4>关键发现（修正版）：</h4>
+                    <p><strong>1. 财务优势显著 ✓ (修正：100.00)</strong></p>
+                    <p>ROE (72.62%) 和毛利率 (47.81%) 均超同行中位数，经营现金流达77亿。三项财务指标全部达标，财务维度满分 100.00。</p>
+
+                    <p style="margin-top: 15px;"><strong>2. 竞争力领先 ✓ (修正：74.22)</strong></p>
+                    <p>ROE 百分位 100%（行业最高），毛利率百分位 85.54%（行业前 15%）。综合竞争力得分 74.22，表现突出。</p>
+
+                    <p style="margin-top: 15px;"><strong>3. 股权集中度过高 ✗ (0.00)</strong></p>
+                    <p>前十大股东持股 100%，远超 70% 的安全阈值，严重影响激励机制维度评分。这是唯一完全不通过的维度。</p>
+
+                    <p style="margin-top: 15px;"><strong>4. 机构关注度高 ✓ (修正：100.00)</strong></p>
+                    <p>373 次研究会议，346 个参与机构（修正数据），超过基准 60 的标准。心理学维度满分 100.00，表明市场持续关注。</p>
+
+                    <p style="margin-top: 15px;"><strong>5. 审计师变更触发一票否决 ✗</strong></p>
+                    <p>近3年内从信永中和→天健会计师事务所变更，虽为正常轮换，但系统规则仍触发 "agency_switch" 否决。</p>
+
+                    <p style="margin-top: 15px;"><strong>综合评价：</strong></p>
+                    <p>该标的财务和市场表现优异（3个维度通过），但因股权集中度极高和审计师变更触发一票否决而不符合芒格标准。一票否决制度的目的是筛选出结构清晰、治理稳健的投资标的，此标的虽业务能力强，但在公司治理上存在关键缺陷。</p>
+                </div>
+            </div>
+
+            <div class="footer">
+                <p>此报告仅供参考，不构成投资建议。数据更新时间：2026-07-11</p>
+                <p>数据已修正：财务维度 100 → 完整，心理学维度 100 → 346 机构参与</p>
+                <p>Munger Mental Model Skill - Educational & Research Use Only</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        const radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['财务维度', '竞争力', '激励机制', '心理学', '负面因素'],
+                datasets: [{
+                    label: '评分',
+                    data: [100.0, 74.22, 0.0, 100.0, 0.0],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 6,
+                    pointBackgroundColor: '#667eea',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

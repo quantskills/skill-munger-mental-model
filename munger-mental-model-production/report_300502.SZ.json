@@ -1,0 +1,63 @@
+{
+  "symbol": "300502.SZ",
+  "trade_date": "20260710",
+  "dim_scores": {
+    "fin": 100.0,
+    "comp": 74.21686746987952,
+    "incentive": 0.0,
+    "psych": 100.0,
+    "neg": 0.0
+  },
+  "dim_passed": {
+    "fin": true,
+    "comp": true,
+    "incentive": false,
+    "psych": true,
+    "neg": false
+  },
+  "sub_scores": {
+    "fin": {
+      "roe_vs_median": 1.0,
+      "gm_vs_median": 1.0,
+      "ocf_positive_and_vs_median": 1.0
+    },
+    "comp": {
+      "roe_percentile": 100.0,
+      "gm_percentile": 85.54216867469879,
+      "concentration_bonus": 0.0
+    },
+    "incentive": {
+      "concentration": 1.0,
+      "concentration_score": 0.0,
+      "pledge_freeze_penalty": 0.0,
+      "exec_trade_score": 0.0
+    },
+    "psych": {
+      "meeting_count": 373,
+      "institute_count": 346,
+      "meeting_score": 50.0,
+      "institute_score": 50.0
+    },
+    "neg": {
+      "veto_count": 1
+    }
+  },
+  "veto_flags": [
+    "agency_switch"
+  ],
+  "data_flags": [
+    "related_party: data_unavailable",
+    "qa_sentiment: not_available"
+  ],
+  "radar_scores": [
+    100.0,
+    74.21686746987952,
+    0.0,
+    100.0,
+    0.0
+  ],
+  "high_confidence": false,
+  "verdict": "veto",
+  "data_version": "real-v1",
+  "update_time": "2026-07-11 14:21:17"
+}
