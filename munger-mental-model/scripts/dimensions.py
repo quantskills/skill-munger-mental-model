@@ -127,6 +127,12 @@ def score_financial(target: dict, peers: pd.DataFrame) -> dict:
     ocf_score = 1.0 if (valid_ocf > 0 and ocf_val > 0 and ocf_val >= ocf_median) else 0.0
 
     sub_scores = {
+        "roe_value": roe_val,
+        "roe_median": roe_median,
+        "gm_value": gm_val,
+        "gm_median": gm_median,
+        "ocf_value": ocf_val,
+        "ocf_median": ocf_median,
         "roe_vs_median": roe_score,
         "gm_vs_median": gm_score,
         "ocf_positive_and_vs_median": ocf_score,
@@ -218,6 +224,11 @@ def score_competition(target: dict, peers: pd.DataFrame) -> dict:
     score = min(100.0, max(0.0, score))  # Clamp to 0-100
 
     sub_scores = {
+        "roe_value": roe_val,
+        "gm_value": gm_val,
+        "peer_count": len(peers),
+        "valid_roe_count": valid_roe,
+        "valid_gm_count": valid_gm,
         "roe_percentile": roe_percentile,
         "gm_percentile": gm_percentile,
         "concentration_bonus": concentration_bonus,

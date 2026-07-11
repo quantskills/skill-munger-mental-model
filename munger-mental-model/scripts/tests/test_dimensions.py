@@ -20,9 +20,9 @@ class TestScoreFinancial:
         """Financial: ROE, GM, OCF all above median → score 100, passed=True."""
         target = {"roe": 20.0, "gross_profit": 0.40, "ocf": 1_000_000}
         peers = pd.DataFrame({
-            "roe": [15.0, 16.0, 17.0],
-            "gross_profit": [0.35, 0.36, 0.37],
-            "ocf": [500_000, 600_000, 700_000],
+            "roe": [15.0, 16.0, 17.0, 18.0, 19.0],
+            "gross_profit": [0.35, 0.36, 0.37, 0.38, 0.39],
+            "ocf": [500_000, 600_000, 700_000, 800_000, 900_000],
         })
         result = dimensions.score_financial(target, peers)
         assert result["score"] == 100.0
@@ -35,28 +35,62 @@ class TestScoreFinancial:
         """Financial: Negative OCF → ocf_positive_and_vs_median=0, score < 100."""
         target = {"roe": 20.0, "gross_profit": 0.40, "ocf": -100_000}
         peers = pd.DataFrame({
-            "roe": [15.0, 16.0, 17.0],
-            "gross_profit": [0.35, 0.36, 0.37],
-            "ocf": [500_000, 600_000, 700_000],
+            "roe": [15.0, 16.0, 17.0, 18.0, 19.0],
+            "gross_profit": [0.35, 0.36, 0.37, 0.38, 0.39],
+            "ocf": [500_000, 600_000, 700_000, 800_000, 900_000],
         })
         result = dimensions.score_financial(target, peers)
         assert result["sub_scores"]["ocf_positive_and_vs_median"] == 0.0
         assert result["score"] < 100.0
+
+    def test_financial_sub_scores_contain_raw_values(self):
+        """Financial: sub_scores includes raw metric values and medians."""
+        target = {"roe": 20.0, "gross_profit": 0.40, "ocf": 1_000_000}
+        peers = pd.DataFrame({
+            "roe": [15.0, 16.0, 17.0, 18.0, 19.0],
+            "gross_profit": [0.35, 0.36, 0.37, 0.38, 0.39],
+            "ocf": [500_000, 600_000, 700_000, 800_000, 900_000],
+        })
+        result = dimensions.score_financial(target, peers)
+        ss = result["sub_scores"]
+
+        assert ss["roe_value"] == 20.0
+        assert ss["roe_median"] == 17.0
+        assert ss["gm_value"] == 0.40
+        assert ss["gm_median"] == 0.37
+        assert ss["ocf_value"] == 1_000_000
+        assert ss["ocf_median"] == 700_000
 
 
 class TestScoreCompetition:
     """Tests for score_competition function."""
 
     def test_competition_low_confidence(self):
-        """Competition: < 3 peers → low_confidence flag, passed=False."""
+        """Competition: < 3 peers → low_confidence flag, passed=None (insufficient data)."""
         target = {"roe": 20.0, "gross_profit": 0.40}
         peers = pd.DataFrame({
             "roe": [15.0, 16.0],
             "gross_profit": [0.35, 0.36],
         })
         result = dimensions.score_competition(target, peers)
-        assert "low_confidence" in result["flags"]
-        assert result["passed"] is False
+        assert any("low_confidence" in flag for flag in result["flags"])
+        assert result["passed"] is None  # Insufficient data returns None
+
+    def test_competition_sub_scores_contain_raw_values(self):
+        """Competition: sub_scores includes raw metric values and peer counts."""
+        target = {"roe": 20.0, "gross_profit": 0.40}
+        peers = pd.DataFrame({
+            "roe": [10.0, 12.0, 15.0, 18.0, 22.0],
+            "gross_profit": [0.25, 0.30, 0.35, 0.38, 0.42],
+        })
+        result = dimensions.score_competition(target, peers)
+        ss = result["sub_scores"]
+
+        assert ss["roe_value"] == 20.0
+        assert ss["gm_value"] == 0.40
+        assert ss["peer_count"] == 5
+        assert ss["valid_roe_count"] == 5
+        assert ss["valid_gm_count"] == 5
 
 
 class TestScoreIncentive:
