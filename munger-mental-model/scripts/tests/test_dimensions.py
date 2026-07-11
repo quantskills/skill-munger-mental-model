@@ -111,6 +111,9 @@ def _clean_audit() -> pd.DataFrame:
         "opinion": ["unqualified_opinion"],
         "audit_agency": ["Agency A"],
         "audit_date": ["2025-06-30"],
+        "agency": ["Agency A"],
+        "date": ["2025-06-30"],
+        "quarter": ["2024q4"],
     })
 
 
@@ -149,6 +152,9 @@ class TestScoreNegative:
             "opinion": ["qualified_opinion"],
             "audit_agency": ["Agency A"],
             "audit_date": ["2025-06-30"],
+            "agency": ["Agency A"],
+            "date": ["2025-06-30"],
+            "quarter": ["2024q4"],
         })
         status = _empty(["status", "change_date"])
         pledge = _empty(["pledge_ratio"])
@@ -162,11 +168,14 @@ class TestScoreNegative:
         assert "nonstandard_audit:qualified_opinion" in result["veto_flags"]
 
     def test_negative_agency_switch_veto(self):
-        """Negative: multiple distinct audit agencies → veto."""
+        """Negative: switch to unknown/small audit agency (not reputable) → veto with agency_switch_to_unknown flag."""
         audit = pd.DataFrame({
             "opinion": ["unqualified_opinion", "unqualified_opinion"],
             "audit_agency": ["Agency A", "Agency B"],
             "audit_date": ["2025-06-30", "2024-06-30"],
+            "agency": ["Agency A", "Agency B"],
+            "date": ["2025-06-30", "2024-06-30"],
+            "quarter": ["2024q4", "2023q4"],
         })
         status = _empty(["status", "change_date"])
         pledge = _empty(["pledge_ratio"])
@@ -177,7 +186,29 @@ class TestScoreNegative:
         assert result["score"] == 0.0
         assert result["passed"] is False
         assert result["veto"] is True
-        assert "agency_switch" in result["veto_flags"]
+        assert "agency_switch_to_unknown" in result["veto_flags"]
+
+    def test_negative_reputable_agency_rotation_no_veto(self):
+        """Negative: switch between reputable agencies (normal rotation) → NO veto, only info flag."""
+        audit = pd.DataFrame({
+            "opinion": ["unqualified_opinion", "unqualified_opinion", "unqualified_opinion"],
+            "audit_agency": ["信永中和会计师事务所", "信永中和会计师事务所", "天健会计师事务所"],
+            "agency": ["信永中和会计师事务所", "信永中和会计师事务所", "天健会计师事务所"],
+            "audit_date": ["2023-04-20", "2024-04-18", "2025-04-15"],
+            "date": ["2023-04-20", "2024-04-18", "2025-04-15"],
+            "quarter": ["2022q4", "2023q4", "2024q4"],
+        })
+        status = _empty(["status", "change_date"])
+        pledge = _empty(["pledge_ratio"])
+        sh_change = _empty(["holder_type", "ratio_up_limit"])
+
+        result = dimensions.score_negative(audit, status, pledge, sh_change)
+
+        assert result["veto"] is False
+        assert result["passed"] is True
+        assert result["score"] == 100.0
+        assert "agency_switch:normal_rotation" in result["flags"]
+        assert all("agency_switch" not in vf for vf in result["veto_flags"])
 
     def test_negative_status_change_veto(self):
         """Negative: status row present (ST or delisting) → veto."""

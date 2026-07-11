@@ -530,8 +530,8 @@ def score_negative(audit: pd.DataFrame, status: pd.DataFrame, pledge: pd.DataFra
                 veto_flags.append("agency_switch_with_opinion_change")
                 print(f"        ✗ 近3年换所 → 换所后出现非标意见 → 一票否决")
             else:
-                # Normal switch within reputable agencies - still flag it for visibility
-                veto_flags.append("agency_switch")
+                # Normal switch within reputable agencies - only add info flag, not veto
+                flags.append("agency_switch:normal_rotation")
                 print(f"        ✓ 近3年换所但属正常轮换: {list(recent_agencies)} (均为知名大所且意见标准)")
         else:
             all_agencies = annual[agency_col].dropna().unique()
