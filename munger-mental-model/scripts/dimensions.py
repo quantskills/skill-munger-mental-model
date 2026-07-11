@@ -51,7 +51,7 @@ def _passed(score: float) -> bool:
     Returns:
         bool: True if score >= pass_threshold(), False otherwise
     """
-    return score >= config.pass_threshold()
+    return bool(score >= config.pass_threshold())
 
 
 def _median(series: pd.Series) -> float:
@@ -254,106 +254,119 @@ def score_competition(target: dict, peers: pd.DataFrame) -> dict:
     }
 
 
-def score_incentive(top_holders: pd.DataFrame, sh_change: pd.DataFrame) -> dict:
+def score_incentive(top_holders: pd.DataFrame, sh_change: pd.DataFrame, pledge: pd.DataFrame) -> dict:
     """
-    Score incentive dimension: concentration + pledge/freeze penalty + exec trades.
+    Score incentive dimension: four-signal composite model (40-25-20-15 weights).
+
+    Signals:
+    1. Controller clarity (40%) — top1 ratio and gap to top2
+    2. Management trading (25%) — net buy/sell direction
+    3. Pledge ratio (20%) — controlling shareholder pledge level
+    4. Controlling shareholder trading (15%) — increase/decrease
 
     Args:
-        top_holders: DataFrame with columns 'holder_name', 'hold_ratio'
-        sh_change: DataFrame with columns 'nature', 'net_change', 'pledge_ratio', 'freeze_ratio'
+        top_holders: DataFrame with columns 'holder_name', 'hold_percent_total'
+        sh_change: DataFrame with columns 'nature', 'net_change', 'holder_type', 'ratio_up_limit'
+        pledge: DataFrame with column 'pledge_ratio'
 
     Returns:
         dict with keys: score, passed, flags, sub_scores
-        Always appends 'related_party: data_unavailable' flag
+        sub_scores contains all four signal scores
     """
-    # Concentration: top 10 holders' total ratio (0-1)
-    # API returns hold_percent_total (%) instead of hold_ratio (0-1)
-    concentration = 0.0
-    if not top_holders.empty:
-        if "hold_ratio" in top_holders.columns:
-            concentration = top_holders["hold_ratio"].sum()
-        elif "hold_percent_total" in top_holders.columns:
-            # hold_percent_total is in %, convert to ratio (0-1)
-            concentration = top_holders["hold_percent_total"].sum() / 100.0
-        elif "hold_percent_float" in top_holders.columns:
-            # Fallback to float ratio
-            concentration = top_holders["hold_percent_float"].sum() / 100.0
-    concentration = min(1.0, concentration)  # Clamp to 1.0
+    # Signal 1: Controller clarity (40% weight)
+    # top1 >= 20% AND gap(top1/top2) >= 2 → 100
+    # top1 >= 10% AND gap >= 1.5 → 75
+    # top1 >= 5% → 25
+    # else → 0
+    controller_clarity_score = 0.0
+    if not top_holders.empty and len(top_holders) > 0:
+        top1 = top_holders.iloc[0]["hold_percent_total"] / 100.0 if "hold_percent_total" in top_holders.columns else 0.0
+        top2 = top_holders.iloc[1]["hold_percent_total"] / 100.0 if len(top_holders) > 1 and "hold_percent_total" in top_holders.columns else 0.0
 
-    # Sweet spot 30–70%: full score; outside → linear falloff
-    if 0.30 <= concentration <= 0.70:
-        concentration_score = 100.0
+        if top1 > 0:
+            gap = top1 / top2 if top2 > 0 else float('inf')
+
+            if top1 >= 0.20 and gap >= 2.0:
+                controller_clarity_score = 100.0
+            elif top1 >= 0.10 and gap >= 1.5:
+                controller_clarity_score = 75.0
+            elif top1 >= 0.05:
+                controller_clarity_score = 25.0
+            else:
+                controller_clarity_score = 0.0
+        else:
+            controller_clarity_score = 0.0
     else:
-        # Linear falloff from 0.30 and 0.70
-        if concentration < 0.30:
-            concentration_score = (concentration / 0.30) * 100.0
-        else:  # concentration > 0.70
-            concentration_score = ((1.0 - concentration) / 0.30) * 100.0
-        concentration_score = max(0.0, concentration_score)
+        controller_clarity_score = 0.0
 
-    # Pledge/freeze penalty: -20 if any pledge or freeze > 0
-    pledge_freeze_penalty = 0.0
-    if not sh_change.empty:
-        has_pledge = "pledge_ratio" in sh_change.columns and (sh_change["pledge_ratio"] > 0).any()
-        has_freeze = "freeze_ratio" in sh_change.columns and (sh_change["freeze_ratio"] > 0).any()
-        if has_pledge or has_freeze:
-            pledge_freeze_penalty = -20.0
-
-    # Executive buy/sell: +10 for net buy, -10 for net sell
-    exec_trade_score = 0.0
+    # Signal 2: Management trading (25% weight)
+    # net buy > 0 → 100
+    # no management rows → 50 (neutral)
+    # net sell < 0 → 0
+    mgmt_trade_score = 50.0  # Default neutral
     if not sh_change.empty and "nature" in sh_change.columns and "net_change" in sh_change.columns:
-        mgmt_change = sh_change[sh_change["nature"] == "管理层"]["net_change"].sum() if len(sh_change[sh_change["nature"] == "管理层"]) > 0 else 0
-        if mgmt_change > 0:
-            exec_trade_score = 10.0
-        elif mgmt_change < 0:
-            exec_trade_score = -10.0
+        mgmt_rows = sh_change[sh_change["nature"] == "管理层"]
+        if not mgmt_rows.empty:
+            mgmt_net = mgmt_rows["net_change"].sum()
+            if mgmt_net > 0:
+                mgmt_trade_score = 100.0
+            elif mgmt_net < 0:
+                mgmt_trade_score = 0.0
+            else:
+                mgmt_trade_score = 50.0
 
-    score = concentration_score + pledge_freeze_penalty + exec_trade_score
+    # Signal 3: Pledge ratio (20% weight)
+    # ratio < 50% → score = (1 - ratio/0.50) * 100, clamped to [0, 100]
+    # if empty → assume no pledge (80)
+    pledge_score = 80.0  # Default: assume no pledge
+    if not pledge.empty and "pledge_ratio" in pledge.columns:
+        pledge_ratio = pledge["pledge_ratio"].iloc[0] if len(pledge) > 0 else 0.0
+        pledge_score = round(max(0.0, (1.0 - pledge_ratio / 0.50) * 100.0), 10)
+    else:
+        pledge_score = 80.0
+
+    # Signal 4: Controlling shareholder trading (15% weight)
+    # net increase (net_change > 0) → 100
+    # no controlling rows → 50 (neutral)
+    # net decrease >= -2% (ratio_up_limit check) → 25
+    # net decrease < -2% → 0
+    controlling_trade_score = 50.0  # Default neutral
+    if not sh_change.empty and "holder_type" in sh_change.columns and "net_change" in sh_change.columns:
+        controlling_rows = sh_change[sh_change["holder_type"] == "controlling"]
+        if not controlling_rows.empty:
+            controlling_net = controlling_rows["net_change"].sum()
+            if controlling_net > 0:
+                controlling_trade_score = 100.0
+            else:
+                # Check if decrease is within 2% threshold
+                ratio_up_limit = controlling_rows["ratio_up_limit"].iloc[0] if "ratio_up_limit" in controlling_rows.columns else 0.0
+                if ratio_up_limit <= 0.02:
+                    controlling_trade_score = 25.0
+                else:
+                    controlling_trade_score = 0.0
+        else:
+            controlling_trade_score = 50.0
+
+    # Weighted composite score
+    score = (controller_clarity_score * 0.40 + mgmt_trade_score * 0.25 +
+             pledge_score * 0.20 + controlling_trade_score * 0.15)
     score = max(0.0, min(100.0, score))  # Clamp to 0-100
 
     sub_scores = {
-        "concentration": concentration,
-        "concentration_score": concentration_score,
-        "pledge_freeze_penalty": pledge_freeze_penalty,
-        "exec_trade_score": exec_trade_score,
+        "controller_clarity_score": controller_clarity_score,
+        "mgmt_trade_score": mgmt_trade_score,
+        "pledge_score": pledge_score,
+        "controlling_trade_score": controlling_trade_score,
     }
 
     flags = ["related_party: data_unavailable"]
 
-    print(f"    [DETAIL] 激励机制维度详细计算:")
-    print(f"      前十大股东持股比例: {concentration:.4f} ({concentration*100:.2f}%)")
-    if 0.30 <= concentration <= 0.70:
-        print(f"      ✓ 处于甜蜜区间 [30%-70%] → 集中度得分: {concentration_score:.2f}")
-    else:
-        if concentration < 0.30:
-            print(f"      ✗ 集中度过低 < 30% → 线性衰减")
-        else:
-            print(f"      ✗ 集中度过高 > 70% → 线性衰减")
-        print(f"        集中度得分: {concentration_score:.2f}")
-
-    # Detailed pledge/freeze penalty status
-    pledge_freeze_detail = "无质押/冻结"
-    if not sh_change.empty:
-        has_pledge = "pledge_ratio" in sh_change.columns and (sh_change["pledge_ratio"] > 0).any()
-        has_freeze = "freeze_ratio" in sh_change.columns and (sh_change["freeze_ratio"] > 0).any()
-        if has_pledge or has_freeze:
-            pledge_freeze_detail = "存在质押/冻结"
-
-    print(f"      股权质押/冻结处罚: {pledge_freeze_penalty:.2f}" + (" ⚠ " + pledge_freeze_detail if pledge_freeze_penalty < 0 else " ✓ " + pledge_freeze_detail))
-
-    # Detailed exec trade status
-    exec_trade_detail = "无管理层交易"
-    if not sh_change.empty and "nature" in sh_change.columns and "net_change" in sh_change.columns:
-        mgmt_rows = sh_change[sh_change["nature"] == "管理层"]
-        if not mgmt_rows.empty:
-            mgmt_change = mgmt_rows["net_change"].sum() if len(mgmt_rows) > 0 else 0
-            if mgmt_change > 0:
-                exec_trade_detail = "管理层增持"
-            elif mgmt_change < 0:
-                exec_trade_detail = "管理层减持"
-
-    print(f"      管理层增减持: {exec_trade_score:.2f}" + (" ✓ " + exec_trade_detail if exec_trade_score > 0 else " ✗ " + exec_trade_detail if exec_trade_score < 0 else " - " + exec_trade_detail))
-    print(f"      总分: {concentration_score:.2f} + {pledge_freeze_penalty:.2f} + {exec_trade_score:.2f} = {score:.2f}")
+    print(f"    [DETAIL] 激励机制维度详细计算 (四信号模型):")
+    print(f"      Signal 1 - 控制人清晰度 (40%): {controller_clarity_score:.2f}")
+    print(f"      Signal 2 - 管理层交易 (25%): {mgmt_trade_score:.2f}")
+    print(f"      Signal 3 - 质押比例 (20%): {pledge_score:.2f}")
+    print(f"      Signal 4 - 控股股东交易 (15%): {controlling_trade_score:.2f}")
+    print(f"      加权分数: {controller_clarity_score:.2f}*0.4 + {mgmt_trade_score:.2f}*0.25 + {pledge_score:.2f}*0.2 + {controlling_trade_score:.2f}*0.15 = {score:.2f}")
 
     return {
         "score": score,

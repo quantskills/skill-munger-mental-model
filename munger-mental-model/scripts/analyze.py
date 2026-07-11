@@ -261,7 +261,19 @@ def analyze_symbol(symbol: str, end_date: str | None, update_time: str) -> dict:
         top_holders = __import__('pandas').DataFrame()
         sh_change = __import__('pandas').DataFrame()
 
-    dims_incentive = dimensions.score_incentive(top_holders, sh_change)
+    # Fetch pledge data (needed by both incentive and negative dimensions)
+    print(f"\n[STEP 5a] Fetching pledge data...")
+    try:
+        pledge = data.fetch_pledge(symbol, end_date)
+        print(f"  ✓ Pledge records: {len(pledge)}")
+        if not pledge.empty:
+            print(f"    {pledge.to_string()}")
+    except Exception as e:
+        print(f"  ⚠ Warning: Could not fetch pledge data for {symbol}: {e}")
+        pledge = __import__('pandas').DataFrame()
+
+    # Score incentive dimension (now uses pledge)
+    dims_incentive = dimensions.score_incentive(top_holders, sh_change, pledge)
     print(f"  Score: {dims_incentive['score']:.2f}")
     print(f"  Passed: {dims_incentive['passed']}")
     print(f"  Sub-scores: {dims_incentive['sub_scores']}")
@@ -287,21 +299,17 @@ def analyze_symbol(symbol: str, end_date: str | None, update_time: str) -> dict:
     try:
         audit = data.fetch_audit(symbol, end_date)
         status = data.fetch_status_change(symbol, end_date)
-        pledge = data.fetch_pledge(symbol, end_date)
         print(f"  ✓ Audit records: {len(audit)}")
         if not audit.empty:
             print(f"    {audit.to_string()}")
         print(f"  ✓ Status changes: {len(status)}")
         if not status.empty:
             print(f"    {status.to_string()}")
-        print(f"  ✓ Pledge records: {len(pledge)}")
-        if not pledge.empty:
-            print(f"    {pledge.to_string()}")
     except Exception as e:
         print(f"  ⚠ Warning: Could not fetch negative dimension data for {symbol}: {e}")
         audit = __import__('pandas').DataFrame()
         status = __import__('pandas').DataFrame()
-        pledge = __import__('pandas').DataFrame()
+        # Note: pledge is already fetched above and reused here; don't reset it
 
     dims_neg = dimensions.score_negative(audit, status, pledge, sh_change)
     print(f"  Score: {dims_neg['score']:.2f}")
