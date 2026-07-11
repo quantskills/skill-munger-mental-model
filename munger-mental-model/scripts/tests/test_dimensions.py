@@ -108,7 +108,7 @@ class TestScoreIncentive:
             "holder_type": ["management", "management"],
             "ratio_up_limit": [0.0, 0.0],
         })
-        pledge = pd.DataFrame({"pledge_ratio": [0.0]})
+        pledge = pd.DataFrame({"pledge_ratio": [0.0]})  # 0.0% (百分比形式)
 
         result = dimensions.score_incentive(top_holders, sh_change, pledge)
 
@@ -144,10 +144,12 @@ class TestScoreIncentive:
             "hold_percent_total": [60.0],
         })
         sh_change = pd.DataFrame()
-        pledge = pd.DataFrame({"pledge_ratio": [0.40]})
+        pledge = pd.DataFrame({"pledge_ratio": [40.0]})
 
         result = dimensions.score_incentive(top_holders, sh_change, pledge)
 
+        # pledge_ratio is in percentage form (40.0 = 40%)
+        # convert to decimal: 40.0 / 100 = 0.40
         # pledge score = max(0, (1 - 0.40/0.50) * 100) = 20.0
         assert abs(result["sub_scores"]["pledge_score"] - 20.0) < 0.01
 
@@ -277,7 +279,7 @@ class TestScoreNegative:
         audit = _clean_audit()
         status = _empty(["status", "change_date"])
         pledge = pd.DataFrame({
-            "pledge_ratio": [0.10],
+            "pledge_ratio": [10.0],  # 10% in percentage form
         })
         sh_change = pd.DataFrame({
             "holder_type": ["controlling"],
@@ -375,11 +377,11 @@ class TestScoreNegative:
         assert "status_change:ST_or_delisting" in result["veto_flags"]
 
     def test_negative_high_pledge_veto(self):
-        """Negative: max pledge_ratio > 0.50 → veto."""
+        """Negative: max pledge_ratio > 50% (threshold) → veto."""
         audit = _clean_audit()
         status = _empty(["status", "change_date"])
         pledge = pd.DataFrame({
-            "pledge_ratio": [0.60],
+            "pledge_ratio": [60.0],  # 60% in percentage form, > 50% threshold
         })
         sh_change = _empty(["holder_type", "ratio_up_limit"])
 

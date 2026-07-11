@@ -4,33 +4,43 @@
   "dim_scores": {
     "fin": 100.0,
     "comp": 74.21686746987952,
-    "incentive": 0.0,
+    "incentive": 73.33333333333333,
     "psych": 100.0,
-    "neg": 0.0
+    "neg": 100.0
   },
   "dim_passed": {
     "fin": true,
     "comp": true,
-    "incentive": false,
+    "incentive": true,
     "psych": true,
-    "neg": false
+    "neg": true
   },
   "sub_scores": {
     "fin": {
+      "roe_value": 72.62126582511583,
+      "roe_median": 3.1293680202089353,
+      "gm_value": 47.80562859494121,
+      "gm_median": 28.03598228749575,
+      "ocf_value": 7701234651.0,
+      "ocf_median": 84834662.60499999,
       "roe_vs_median": 1.0,
       "gm_vs_median": 1.0,
       "ocf_positive_and_vs_median": 1.0
     },
     "comp": {
+      "roe_value": 72.62126582511583,
+      "gm_value": 47.80562859494121,
+      "peer_count": 86,
+      "valid_roe_count": 86,
+      "valid_gm_count": 83,
       "roe_percentile": 100.0,
       "gm_percentile": 85.54216867469879,
       "concentration_bonus": 0.0
     },
     "incentive": {
-      "concentration": 1.0,
-      "concentration_score": 0.0,
-      "pledge_freeze_penalty": 0.0,
-      "exec_trade_score": 0.0
+      "mgmt_trade_score": 60.0,
+      "pledge_score": 100.0,
+      "controlling_trade_score": 60.0
     },
     "psych": {
       "meeting_count": 373,
@@ -39,25 +49,30 @@
       "institute_score": 50.0
     },
     "neg": {
-      "veto_count": 1
+      "veto_count": 0,
+      "audit_opinion": "unqualified_opinion",
+      "audit_agency": "天健会计师事务所(特殊普通合伙)",
+      "has_st_status": false,
+      "max_pledge_ratio": null,
+      "pledge_limit": 0.5,
+      "has_controlling_sell": false
     }
   },
-  "veto_flags": [
-    "agency_switch"
-  ],
+  "veto_flags": [],
   "data_flags": [
     "related_party: data_unavailable",
-    "qa_sentiment: not_available"
+    "qa_sentiment: not_available",
+    "agency_switch:normal_rotation"
   ],
   "radar_scores": [
     100.0,
     74.21686746987952,
-    0.0,
+    73.33333333333333,
     100.0,
-    0.0
+    100.0
   ],
-  "high_confidence": false,
-  "verdict": "veto",
+  "high_confidence": true,
+  "verdict": "pass",
   "data_version": "real-v1",
-  "update_time": "2026-07-11 14:21:17"
+  "update_time": "2026-07-11 16:32:30"
 }

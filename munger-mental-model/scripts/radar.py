@@ -33,7 +33,7 @@ def render(record: dict, out_path: str) -> str:
     plt.close("all")
 
     # Create figure and polar subplot
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection="polar"))
+    fig, ax = plt.subplots(figsize=(9, 9), subplot_kw=dict(projection="polar"))
 
     # Calculate angles for 5 axes
     angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
@@ -57,8 +57,11 @@ def render(record: dict, out_path: str) -> str:
     # Add title with symbol
     ax.set_title(f"Radar Chart: {symbol}", pad=20)
 
-    # Save to PNG at 120 dpi
-    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    # Adjust subplot margins to prevent label overflow
+    fig.subplots_adjust(bottom=0.15)
+
+    # Save to PNG at 120 dpi with extra padding
+    fig.savefig(out_path, dpi=120, bbox_inches="tight", pad_inches=0.2)
 
     # Close figure to avoid memory leaks
     plt.close(fig)
