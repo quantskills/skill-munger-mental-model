@@ -18,6 +18,11 @@ metadata:
   collection: mental-models
 ---
 
+## 维护者
+
+- WesleyWu2020 ([@WesleyWu2020](https://github.com/WesleyWu2020))
+- 社区贡献欢迎通过 Issue / PR 参与
+
 ## 适用场景
 
 QuantSkills 的 Munger 心理模型分析工具用于评估 A 股上市公司的投资价值，通过五个独立维度的评分与一票否决的cross-validation机制，产出高置信度的候选池。

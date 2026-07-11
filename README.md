@@ -1,5 +1,7 @@
 # Munger 5-维模型与一票否决的多角度cross-validation分析工具
 
+> 本仓库为 QUANTSKILLS 社区成员项目，未经官方审核，不代表 QUANTSKILLS 官方背书或认证。
+
 本项目是 QuantSkills 的 Munger 心理模型分析工具，用于评估 A 股上市公司的投资价值。通过五个独立维度的评分与一票否决的 cross-validation 机制，产出高置信度的候选池。
 
 ## 五个维度

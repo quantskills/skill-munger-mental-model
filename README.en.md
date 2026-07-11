@@ -1,5 +1,7 @@
 # Munger 5-Dimension Model and Cross-Validation Analysis Tool with Veto
 
+> This repository is a community member project under QUANTSKILLS. It has not been officially reviewed and does not represent official endorsement or certification by QUANTSKILLS.
+
 This project is a QuantSkills analysis tool implementing Charlie Munger's mental model for evaluating A-share (Chinese) listed companies. Through five independent dimensions and a cross-validation mechanism with veto rules, it produces high-confidence candidate pools.
 
 ## Five Dimensions
