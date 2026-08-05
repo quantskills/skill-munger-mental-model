@@ -1385,23 +1385,12 @@ def analyze_symbol(symbol: str, end_date: str | None, update_time: str) -> dict:
     # Fetch and score incentive dimension
     print(f"\n[STEP 5] Fetching & Scoring Incentive Dimension...")
     try:
-        top_holders = data.fetch_top_holders(symbol, end_date)
         sh_change = data.fetch_shareholder_change(symbol, end_date)
-        print(f"  ✓ Top holders: {len(top_holders)} records")
-        if not top_holders.empty:
-            # Print available columns that contain holder information
-            cols_to_print = [col for col in ['holder_name', 'hold_ratio', 'hold_percent_total', 'hold_percent_float'] if col in top_holders.columns]
-            if cols_to_print:
-                print(f"    {top_holders[cols_to_print].to_string()}")
-            else:
-                print(f"    Top 5 holders:")
-                print(f"    {top_holders.head().to_string()}")
         print(f"  ✓ Shareholder changes: {len(sh_change)} records")
         if not sh_change.empty:
             print(f"    {sh_change.to_string()}")
     except Exception as e:
         print(f"  ⚠ Warning: Could not fetch incentive data for {symbol}: {e}")
-        top_holders = __import__('pandas').DataFrame()
         sh_change = __import__('pandas').DataFrame()
 
     # Fetch pledge data (needed by both incentive and negative dimensions)
@@ -1416,7 +1405,7 @@ def analyze_symbol(symbol: str, end_date: str | None, update_time: str) -> dict:
         pledge = __import__('pandas').DataFrame()
 
     # Score incentive dimension (now uses pledge)
-    dims_incentive = dimensions.score_incentive(top_holders, sh_change, pledge)
+    dims_incentive = dimensions.score_incentive(sh_change, pledge)
     print(f"  Score: {dims_incentive['score']:.2f}")
     print(f"  Passed: {dims_incentive['passed']}")
     print(f"  Sub-scores: {dims_incentive['sub_scores']}")

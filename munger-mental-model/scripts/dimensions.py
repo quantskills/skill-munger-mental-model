@@ -254,31 +254,55 @@ def score_competition(target: dict, peers: pd.DataFrame) -> dict:
     }
 
 
-def score_incentive(top_holders: pd.DataFrame, sh_change: pd.DataFrame, pledge: pd.DataFrame) -> dict:
+def score_incentive(sh_change: pd.DataFrame, pledge: pd.DataFrame) -> dict:
     """
-    Score incentive dimension: three-signal composite model (0-33.33-33.33-33.33 weights).
+    Score incentive dimension: three-signal composite model (equal weights).
 
-    Signals (取消信号1: 控制人清晰度):
-    1. Management trading (33.33%) — net buy/sell direction (基础得分60)
-    2. Pledge ratio (33.33%) — controlling shareholder pledge level (基础得分60)
-    3. Controlling shareholder trading (33.33%) — increase/decrease (基础得分60)
+    Signals:
+    1. Management trading (33.33%) — net buy/sell direction (基线60)
+    2. Pledge ratio (33.33%) — controlling shareholder pledge level (基线60)
+    3. Controlling shareholder trading (33.33%) — increase/decrease (基线60)
 
     Args:
-        top_holders: DataFrame with columns 'holder_name', 'hold_percent_total'
-        sh_change: DataFrame with columns 'nature', 'net_change', 'holder_type', 'ratio_up_limit'
-        pledge: DataFrame with column 'pledge_ratio'
+        sh_change: DataFrame with shareholder change records (增减持).
+                   Expected columns: nature, net_change, holder_type, ratio_up_limit.
+        pledge: DataFrame with pledge records.
+                Expected column: pledge_ratio.
 
     Returns:
         dict with keys: score, passed, flags, sub_scores
         sub_scores contains all three signal scores
     """
-    # Signal 1: Management trading (33.33% weight, 基础60分)
-    # net buy > 0 → 100
-    # no management rows → 60 (neutral baseline)
-    # net sell < 0 → 20
-    mgmt_trade_score = 60.0  # Default neutral baseline
+    # --- Helpers: defensive unit normalization ---
+    # API fields may return percentage (e.g. 18.86 = 18.86%) or decimal (0.1886).
+    # We normalize: if value > 1.0, assume percentage and divide by 100.
+    def _norm_ratio(val) -> float:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return 0.0
+        v = float(val)
+        return v / 100.0 if v > 1.0 else v
+
+    def _norm_pledge(val) -> float:
+        return _norm_ratio(val)  # same logic
+
+    # --- Field-value fallback sets ---
+    # The API may return Chinese or English values; try known alternatives.
+    _MGMT_VALUES = {"管理层", "高管", "董事", "监事", "management", "executive"}
+    _CONTROLLING_VALUES = {"controlling", "控股股东", "实际控制人", "大股东"}
+
+    flags = []
+
+    # ---- Signal 1: Management trading (33.33% weight, 基线60) ----
+    # net buy > 0 → 100; net sell < 0 → 20; no data / neutral → 60
+    mgmt_trade_score = 60.0
     if not sh_change.empty and "nature" in sh_change.columns and "net_change" in sh_change.columns:
-        mgmt_rows = sh_change[sh_change["nature"] == "管理层"]
+        mgmt_rows = sh_change[sh_change["nature"].isin(_MGMT_VALUES)]
+        if mgmt_rows.empty:
+            # Fallback: substring match for partial API value matches
+            pattern = '|'.join(_MGMT_VALUES)
+            mgmt_rows = sh_change[sh_change["nature"].astype(str).str.contains(
+                pattern, na=False, regex=True
+            )]
         if not mgmt_rows.empty:
             mgmt_net = mgmt_rows["net_change"].sum()
             if mgmt_net > 0:
@@ -288,47 +312,59 @@ def score_incentive(top_holders: pd.DataFrame, sh_change: pd.DataFrame, pledge: 
             else:
                 mgmt_trade_score = 60.0
 
-    # Signal 2: Pledge ratio (33.33% weight, 基础60分)
-    # ratio < 50% → score = 60 + (1 - ratio/0.50) * 40, clamped to [20, 100]
-    # if empty → assume no pledge (100)
-    # Note: API returns pledge_ratio in percentage form (0-100, e.g., 18.86 means 18.86%)
-    pledge_score = 100.0  # Default: assume no pledge = good
+    # ---- Signal 2: Pledge ratio (33.33% weight, 基线60) ----
+    # Use max pledge (consistent with score_negative). Default: 60 (neutral) when data absent.
+    # Formula: 60 + (1 - ratio/0.50) * 40, clamped to [20, 100]
+    pledge_score = 60.0  # was 100.0 — too generous for missing data
+    pledge_data_available = False
     if not pledge.empty and "pledge_ratio" in pledge.columns:
-        pledge_ratio = pledge["pledge_ratio"].iloc[0] if len(pledge) > 0 else 0.0
-        # Convert percentage to decimal (18.86 → 0.1886)
-        pledge_ratio_decimal = pledge_ratio / 100.0
-        # 基础60分 + (无质押度)*40 = 60 + (1-ratio/0.5)*40
-        pledge_score = round(60.0 + max(0.0, (1.0 - pledge_ratio_decimal / 0.50) * 40.0), 10)
-        pledge_score = max(20.0, min(100.0, pledge_score))  # Clamp to [20, 100]
-    else:
-        pledge_score = 100.0
+        raw = pledge["pledge_ratio"].dropna()
+        if len(raw) > 0:
+            pledge_data_available = True
+            pledge_ratio_dec = _norm_pledge(raw.max())
+            pledge_score = round(
+                60.0 + max(0.0, (1.0 - pledge_ratio_dec / 0.50) * 40.0), 10
+            )
+            pledge_score = max(20.0, min(100.0, pledge_score))
+    if not pledge_data_available:
+        flags.append("pledge: data_unavailable")
 
-    # Signal 3: Controlling shareholder trading (33.33% weight, 基础60分)
-    # net increase (net_change > 0) → 100
-    # no controlling rows → 60 (neutral baseline)
-    # net decrease >= -2% (ratio_up_limit check) → 40
-    # net decrease < -2% → 20
-    controlling_trade_score = 60.0  # Default neutral baseline
+    # ---- Signal 3: Controlling shareholder trading (33.33% weight, 基线60) ----
+    # Per-row assessment (NOT sum, which can cancel buy+sell):
+    #   any net increase → 100
+    #   no increase + at least one net decrease → assess severity via ratio_up_limit
+    #   all neutral / no data → 60
+    controlling_trade_score = 60.0
     if not sh_change.empty and "holder_type" in sh_change.columns and "net_change" in sh_change.columns:
-        controlling_rows = sh_change[sh_change["holder_type"] == "controlling"]
-        if not controlling_rows.empty:
-            controlling_net = controlling_rows["net_change"].sum()
-            if controlling_net > 0:
-                controlling_trade_score = 100.0
-            else:
-                # Check if decrease is within 2% threshold
-                ratio_up_limit = controlling_rows["ratio_up_limit"].iloc[0] if "ratio_up_limit" in controlling_rows.columns else 0.0
-                if ratio_up_limit <= 0.02:
-                    controlling_trade_score = 40.0
-                else:
-                    controlling_trade_score = 20.0
-        else:
-            controlling_trade_score = 60.0
+        ctl_rows = sh_change[sh_change["holder_type"].isin(_CONTROLLING_VALUES)]
+        if ctl_rows.empty:
+            # Fallback: substring match
+            pattern = '|'.join(_CONTROLLING_VALUES)
+            ctl_rows = sh_change[sh_change["holder_type"].astype(str).str.contains(
+                pattern, na=False, regex=True
+            )]
+        if not ctl_rows.empty:
+            has_inc = (ctl_rows["net_change"] > 0).any()
+            has_dec = (ctl_rows["net_change"] < 0).any()
 
-    # Weighted composite score (equal weights: 33.33% each)
+            if has_inc:
+                controlling_trade_score = 100.0
+            elif has_dec:
+                # Use the worst (largest) ratio_up_limit among decreasing rows
+                dec_rows = ctl_rows[ctl_rows["net_change"] < 0]
+                max_ratio = 0.0
+                if "ratio_up_limit" in dec_rows.columns:
+                    vals = dec_rows["ratio_up_limit"].dropna()
+                    if len(vals) > 0:
+                        max_ratio = max(_norm_ratio(v) for v in vals)
+                controlling_trade_score = 40.0 if max_ratio <= 0.02 else 20.0
+            else:
+                controlling_trade_score = 60.0  # all neutral (net_change == 0)
+
+    # ---- Composite score (equal weights 1/3 each) ----
     score = (mgmt_trade_score * (1/3) + pledge_score * (1/3) +
              controlling_trade_score * (1/3))
-    score = max(0.0, min(100.0, score))  # Clamp to 0-100
+    score = max(0.0, min(100.0, score))
 
     sub_scores = {
         "mgmt_trade_score": mgmt_trade_score,
@@ -336,13 +372,18 @@ def score_incentive(top_holders: pd.DataFrame, sh_change: pd.DataFrame, pledge: 
         "controlling_trade_score": controlling_trade_score,
     }
 
-    flags = ["related_party: data_unavailable"]
+    # Always add related_party data gap marker
+    flags.append("related_party: data_unavailable")
 
     print(f"    [DETAIL] 激励机制维度详细计算 (三信号模型):")
     print(f"      Signal 1 - 管理层交易 (33.33%): {mgmt_trade_score:.2f}")
-    print(f"      Signal 2 - 质押比例 (33.33%): {pledge_score:.2f}")
+    pct_note = " (数据不可用,默认60)" if not pledge_data_available else ""
+    print(f"      Signal 2 - 质押比例 (33.33%): {pledge_score:.2f}{pct_note}")
     print(f"      Signal 3 - 控股股东交易 (33.33%): {controlling_trade_score:.2f}")
     print(f"      加权分数: {mgmt_trade_score:.2f}*0.3333 + {pledge_score:.2f}*0.3333 + {controlling_trade_score:.2f}*0.3333 = {score:.2f}")
+    extra_flags = [f for f in flags if f != "related_party: data_unavailable"]
+    if extra_flags:
+        print(f"      ⚠ 数据标记: {extra_flags}")
 
     return {
         "score": score,
@@ -553,28 +594,37 @@ def score_negative(audit: pd.DataFrame, status: pd.DataFrame, pledge: pd.DataFra
     # Check 4: Max pledge_ratio > pledge_max()
     print(f"      检查4: 股权质押比例是否过高...")
     if not pledge.empty and "pledge_ratio" in pledge.columns:
-        max_pledge = pledge["pledge_ratio"].max()
-        # API returns pledge_ratio in percentage form (e.g., 18.86 means 18.86%)
-        # Convert to decimal for comparison with pledge_max() which is in decimal form
-        max_pledge_decimal = max_pledge / 100.0
-        if max_pledge_decimal > config.pledge_max():
+        max_pledge_raw = pledge["pledge_ratio"].max()
+        # Defensive unit normalization: if value > 1.0 assume percentage (e.g. 18.86 = 18.86%)
+        max_pledge = max_pledge_raw / 100.0 if max_pledge_raw > 1.0 else max_pledge_raw
+        if max_pledge > config.pledge_max():
             veto_flags.append("high_pledge")
-            print(f"        ✗ 最高质押比例: {max_pledge:.2f}% > {config.pledge_max() * 100:.1f}% → 一票否决")
+            print(f"        ✗ 最高质押比例: {max_pledge*100:.2f}% > {config.pledge_max() * 100:.1f}% → 一票否决")
         else:
-            print(f"        ✓ 最高质押比例: {max_pledge:.2f}% <= {config.pledge_max() * 100:.1f}%")
+            print(f"        ✓ 最高质押比例: {max_pledge*100:.2f}% <= {config.pledge_max() * 100:.1f}%")
     else:
         print(f"        ⚠ 无质押数据")
 
     # Check 5: Controlling shareholder 减持 with ratio_up_limit > 0.02
     print(f"      检查5: 大股东是否大额减持...")
+    _CTL_CHECK_VALUES = {"controlling", "控股股东", "实际控制人", "大股东"}
     if not sh_change.empty and "holder_type" in sh_change.columns and "ratio_up_limit" in sh_change.columns:
-        controlling = sh_change[sh_change["holder_type"] == "controlling"]
+        controlling = sh_change[sh_change["holder_type"].isin(_CTL_CHECK_VALUES)]
+        if controlling.empty:
+            # Fallback: substring match
+            pattern = '|'.join(_CTL_CHECK_VALUES)
+            controlling = sh_change[sh_change["holder_type"].astype(str).str.contains(
+                pattern, na=False, regex=True
+            )]
         if not controlling.empty:
             for _, row in controlling.iterrows():
-                if row["ratio_up_limit"] > 0.02:
+                raw_ratio = row["ratio_up_limit"]
+                # Defensive unit normalization: if > 1.0, assume percentage
+                ratio_dec = raw_ratio / 100.0 if raw_ratio > 1.0 else raw_ratio
+                if ratio_dec > 0.02:
                     veto_flags.append("large_controlling_sell")
                     flags.append("hostile_takeover: weak_proxy")
-                    print(f"        ✗ 大股东减持比例: {row['ratio_up_limit']:.4f} > 0.02 → 一票否决")
+                    print(f"        ✗ 大股东减持比例: {ratio_dec*100:.2f}% > 2% → 一票否决")
                     break
             if "large_controlling_sell" not in veto_flags:
                 print(f"        ✓ 大股东减持比例正常")

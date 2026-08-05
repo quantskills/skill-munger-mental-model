@@ -444,7 +444,14 @@ def fetch_shareholder_change(
         if df is None or df.empty:
             return pd.DataFrame()
 
-        return df.copy()
+        # Diagnostic: log actual API column names to aid field-mapping debugging.
+        # Expected columns for dimensions.py: nature (增减持人性质), net_change (净变动),
+        # holder_type (股东类型), ratio_up_limit (减持比例上限).
+        result = df.copy()
+        print(f"  [DEBUG] get_stock_shareholder_change columns: {list(result.columns)}")
+        print(f"  [DEBUG] Sample nature values: {result['nature'].unique()[:5].tolist() if 'nature' in result.columns else 'N/A'}")
+        print(f"  [DEBUG] Sample holder_type values: {result['holder_type'].unique()[:5].tolist() if 'holder_type' in result.columns else 'N/A'}")
+        return result
     except Exception as e:
         print(f"  Warning: Could not fetch shareholder change for {symbol}: {e}")
         return pd.DataFrame()

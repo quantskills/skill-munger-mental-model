@@ -123,8 +123,9 @@ def check_veto_forces_low_confidence() -> None:
     # Non-standard opinion triggers veto
     adverse_audit = pd.DataFrame({
         "opinion": ["qualified_opinion"],  # Not in standard opinions
-        "audit_agency": ["Agency A"],
-        "audit_date": ["2026-06-30"],
+        "agency": ["Agency A"],
+        "quarter": ["2025q4"],
+        "date": [pd.Timestamp("2026-03-31")],
     })
 
     # Empty others (no veto)

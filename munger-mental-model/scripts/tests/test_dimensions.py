@@ -94,136 +94,81 @@ class TestScoreCompetition:
 
 
 class TestScoreIncentive:
-    """Tests for redesigned score_incentive function (four-signal model)."""
+    """Tests for score_incentive function (three-signal model, equal 1/3 weights, baseline 60)."""
 
-    def test_incentive_clear_controller_full_score(self):
-        """Incentive: clear controller (top1=45%, top2=15%, gap=3x) + no pledge + mgmt buy → high score."""
-        top_holders = pd.DataFrame({
-            "holder_name": ["大股东A", "股东B", "股东C"],
-            "hold_percent_total": [45.0, 15.0, 10.0],
+    # --- helpers ---
+    @staticmethod
+    def _sh(nature_vals, net_changes, holder_types, ratios):
+        """Build a minimal sh_change DataFrame."""
+        n = max(len(nature_vals), len(holder_types))
+        return pd.DataFrame({
+            "nature": list(nature_vals) + [""] * (n - len(nature_vals)),
+            "net_change": list(net_changes) + [0.0] * (n - len(net_changes)),
+            "holder_type": list(holder_types) + [""] * (n - len(holder_types)),
+            "ratio_up_limit": list(ratios) + [0.0] * (n - len(ratios)),
         })
-        sh_change = pd.DataFrame({
-            "nature": ["管理层", "管理层"],
-            "net_change": [50_000, 20_000],
-            "holder_type": ["management", "management"],
-            "ratio_up_limit": [0.0, 0.0],
-        })
-        pledge = pd.DataFrame({"pledge_ratio": [0.0]})  # 0.0% (百分比形式)
 
-        result = dimensions.score_incentive(top_holders, sh_change, pledge)
+    @staticmethod
+    def _pledge(ratios):
+        return pd.DataFrame({"pledge_ratio": list(ratios)})
 
-        # controller_clarity: top1=45%>20%, gap=3.0>=2 → 100
-        # mgmt_trade: net buy → 100
-        # pledge: 0% → 100
-        # controlling_trade: no controlling rows → 50 (neutral)
-        # weighted: 100*0.4 + 100*0.25 + 100*0.2 + 50*0.15 = 92.5
-        assert result["score"] == 92.5
-        assert result["passed"] == True
-        assert result["sub_scores"]["controller_clarity_score"] == 100.0
+    def test_all_data_unavailable_defaults_60(self):
+        """Empty data → all three signals at baseline 60 → score = 60."""
+        result = dimensions.score_incentive(pd.DataFrame(), pd.DataFrame())
+        assert result["score"] == 60.0
+        assert result["passed"] is True
+        assert result["sub_scores"]["mgmt_trade_score"] == 60.0
+        assert result["sub_scores"]["pledge_score"] == 60.0
+        assert result["sub_scores"]["controlling_trade_score"] == 60.0
+
+    def test_mgmt_buy_pledge_zero_controlling_no_data(self):
+        """Management net buy (+100), 0% pledge (+100), no controlling data (+60) → (100+100+60)/3 = 86.67."""
+        sh = self._sh(
+            nature_vals=["管理层"], net_changes=[50_000],
+            holder_types=[""], ratios=[0.0],
+        )
+        pledge = self._pledge([0.0])
+        result = dimensions.score_incentive(sh, pledge)
+
         assert result["sub_scores"]["mgmt_trade_score"] == 100.0
         assert result["sub_scores"]["pledge_score"] == 100.0
-        assert result["sub_scores"]["controlling_trade_score"] == 50.0
+        assert result["sub_scores"]["controlling_trade_score"] == 60.0
+        assert abs(result["score"] - 86.67) < 0.05
+        assert result["passed"] is True
 
-    def test_incentive_dispersed_ownership(self):
-        """Incentive: dispersed ownership (top1=10%) → low controller clarity."""
-        top_holders = pd.DataFrame({
-            "holder_name": ["A", "B", "C", "D", "E"],
-            "hold_percent_total": [10.0, 9.0, 8.0, 7.0, 6.0],
-        })
-        sh_change = pd.DataFrame()
-        pledge = pd.DataFrame()
+    def test_high_pledge_penalty(self):
+        """Pledge ratio 40% (percentage form) → score = 60 + (1-0.40/0.50)*40 = 28."""
+        pledge = self._pledge([40.0])
+        result = dimensions.score_incentive(pd.DataFrame(), pledge)
+        # 60 + (1 - 0.40/0.50) * 40 = 60 + 0.20 * 40 = 68
+        # Wait: 40% decimal = 0.40, 0.40/0.50 = 0.80, 1-0.80 = 0.20, 0.20*40 = 8, 60+8 = 68
+        assert abs(result["sub_scores"]["pledge_score"] - 68.0) < 0.01
 
-        result = dimensions.score_incentive(top_holders, sh_change, pledge)
+    def test_mgmt_sell(self):
+        """Management net sell → mgmt_trade_score = 20."""
+        sh = self._sh(
+            nature_vals=["管理层", "管理层"], net_changes=[-100_000, -50_000],
+            holder_types=["", ""], ratios=[0.0, 0.0],
+        )
+        result = dimensions.score_incentive(sh, pd.DataFrame())
+        assert result["sub_scores"]["mgmt_trade_score"] == 20.0
 
-        assert result["sub_scores"]["controller_clarity_score"] == 25.0
+    def test_controlling_shareholder_decrease_small(self):
+        """Controlling net decrease ≤ 2% (ratio_up_limit=0.01) → 40."""
+        sh = self._sh(
+            nature_vals=[""], net_changes=[-100_000],
+            holder_types=["controlling"], ratios=[0.01],
+        )
+        result = dimensions.score_incentive(sh, pd.DataFrame())
+        assert result["sub_scores"]["controlling_trade_score"] == 40.0
 
-    def test_incentive_high_pledge_penalty(self):
-        """Incentive: high pledge ratio (40%) → low pledge score."""
-        top_holders = pd.DataFrame({
-            "holder_name": ["大股东"],
-            "hold_percent_total": [60.0],
-        })
-        sh_change = pd.DataFrame()
-        pledge = pd.DataFrame({"pledge_ratio": [40.0]})
-
-        result = dimensions.score_incentive(top_holders, sh_change, pledge)
-
-        # pledge_ratio is in percentage form (40.0 = 40%)
-        # convert to decimal: 40.0 / 100 = 0.40
-        # pledge score = max(0, (1 - 0.40/0.50) * 100) = 20.0
-        assert abs(result["sub_scores"]["pledge_score"] - 20.0) < 0.01
-
-    def test_incentive_mgmt_sell(self):
-        """Incentive: management net sell → mgmt_trade_score = 0."""
-        top_holders = pd.DataFrame({
-            "holder_name": ["大股东"],
-            "hold_percent_total": [50.0],
-        })
-        sh_change = pd.DataFrame({
-            "nature": ["管理层", "管理层"],
-            "net_change": [-100_000, -50_000],
-            "holder_type": ["management", "management"],
-            "ratio_up_limit": [0.0, 0.0],
-        })
-        pledge = pd.DataFrame()
-
-        result = dimensions.score_incentive(top_holders, sh_change, pledge)
-
-        assert result["sub_scores"]["mgmt_trade_score"] == 0.0
-
-    def test_incentive_no_data_neutral(self):
-        """Incentive: empty DataFrames → neutral scores where applicable."""
-        top_holders = pd.DataFrame()
-        sh_change = pd.DataFrame()
-        pledge = pd.DataFrame()
-
-        result = dimensions.score_incentive(top_holders, sh_change, pledge)
-
-        # controller_clarity: empty → 0
-        # mgmt_trade: empty → 50 (neutral)
-        # pledge: empty → 80 (assume no pledge)
-        # controlling_trade: empty → 50 (neutral)
-        # weighted: 0*0.4 + 50*0.25 + 80*0.2 + 50*0.15 = 36.0
-        assert result["sub_scores"]["controller_clarity_score"] == 0.0
-        assert result["sub_scores"]["mgmt_trade_score"] == 50.0
-        assert result["sub_scores"]["pledge_score"] == 80.0
-        assert result["sub_scores"]["controlling_trade_score"] == 50.0
-        assert result["score"] == 36.0
-
-    def test_incentive_controlling_shareholder_decrease(self):
-        """Incentive: controlling shareholder net decrease < 2% → score 25."""
-        top_holders = pd.DataFrame({
-            "holder_name": ["大股东"],
-            "hold_percent_total": [50.0],
-        })
-        sh_change = pd.DataFrame({
-            "nature": ["大股东"],
-            "net_change": [-100_000],
-            "holder_type": ["controlling"],
-            "ratio_up_limit": [0.01],
-        })
-        pledge = pd.DataFrame()
-
-        result = dimensions.score_incentive(top_holders, sh_change, pledge)
-
-        assert result["sub_scores"]["controlling_trade_score"] == 25.0
-
-    def test_incentive_controlling_shareholder_increase(self):
-        """Incentive: controlling shareholder net increase → score 100."""
-        top_holders = pd.DataFrame({
-            "holder_name": ["大股东"],
-            "hold_percent_total": [50.0],
-        })
-        sh_change = pd.DataFrame({
-            "nature": ["大股东"],
-            "net_change": [200_000],
-            "holder_type": ["controlling"],
-            "ratio_up_limit": [0.0],
-        })
-        pledge = pd.DataFrame()
-
-        result = dimensions.score_incentive(top_holders, sh_change, pledge)
-
+    def test_controlling_shareholder_increase(self):
+        """Controlling net increase → 100."""
+        sh = self._sh(
+            nature_vals=[""], net_changes=[200_000],
+            holder_types=["controlling"], ratios=[0.0],
+        )
+        result = dimensions.score_incentive(sh, pd.DataFrame())
         assert result["sub_scores"]["controlling_trade_score"] == 100.0
 
 
