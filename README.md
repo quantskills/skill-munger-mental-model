@@ -79,3 +79,6 @@ GNU General Public License v3.0 (GPL-3.0-only)
 ## 参考
 
 详见 `munger-mental-model/SKILL.md`。
+
+
+Pandadata 兼容维护：[abgyjaguo](https://github.com/abgyjaguo)，保留原项目作者署名。

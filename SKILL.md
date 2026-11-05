@@ -94,3 +94,6 @@ PYTHONPATH=. python validate.py
 
 本 repository 在 GNU General Public License v3.0 下开源。研究和教育用途，不构成投资建议。
 
+## Pandadata compatibility
+
+[Pandadata 1.0.6 compatibility](references/pandadata-compatibility.md) — exact SDK baseline, validation scope, and shared guidance for all supported agent runtimes.
